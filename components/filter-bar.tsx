@@ -1,6 +1,6 @@
 "use client"
 
-import { MapPin, Layers } from "lucide-react"
+import { MapPin } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -18,11 +18,9 @@ type Props = {
   street: string
   districtOptions: string[]
   streetOptions: string[]
-  heatVisible: boolean
   onRegionChange: (v: RegionKey) => void
   onDistrictChange: (v: string) => void
   onStreetChange: (v: string) => void
-  onHeatToggle: () => void
 }
 
 const triggerClass =
@@ -34,11 +32,9 @@ export function FilterBar({
   street,
   districtOptions,
   streetOptions,
-  heatVisible,
   onRegionChange,
   onDistrictChange,
   onStreetChange,
-  onHeatToggle,
 }: Props) {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border-2 border-border bg-card p-4 shadow-sm md:p-5">
@@ -94,20 +90,6 @@ export function FilterBar({
           </Select>
         </Field>
       </div>
-
-      <button
-        type="button"
-        onClick={onHeatToggle}
-        aria-pressed={heatVisible}
-        className={`flex h-14 items-center justify-center gap-2 rounded-xl border-2 text-lg font-semibold transition-colors md:text-xl ${
-          heatVisible
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-border bg-card text-foreground"
-        }`}
-      >
-        <Layers className="size-6" aria-hidden="true" />
-        유동인구 히트맵 {heatVisible ? "켜짐" : "꺼짐"}
-      </button>
     </div>
   )
 }
