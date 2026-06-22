@@ -2,11 +2,14 @@
 
 import { useMemo, useState } from "react"
 import dynamic from "next/dynamic"
-import { Megaphone, MapPinned } from "lucide-react"
+import { Megaphone, MapPinned, Wifi, WifiOff } from "lucide-react"
 import { FilterBar } from "@/components/filter-bar"
 import { StopStatCard } from "@/components/stop-stat-card"
 import { HeatLegend } from "@/components/heat-legend"
+import { LayerPanel } from "@/components/layer-panel"
 import { BUS_STOPS, REGIONS, type BusStop, type RegionKey } from "@/lib/data"
+import { towersByRegion, type LayerKey } from "@/lib/layers"
+import { useTraffic } from "@/lib/use-traffic"
 
 const MapView = dynamic(() => import("@/components/map-view"), {
   ssr: false,
@@ -23,18 +26,20 @@ export default function Page() {
   const [region, setRegion] = useState<RegionKey>("서울")
   const [district, setDistrict] = useState<string>(ALL)
   const [street, setStreet] = useState<string>(ALL)
-  const [heatVisible, setHeatVisible] = useState(true)
   const [selected, setSelected] = useState<BusStop | null>(null)
+  const [layers, setLayers] = useState<Record<LayerKey, boolean>>({
+    foot: true,
+    traffic: false,
+    bus: true,
+    tower: false,
+  })
 
-  const districtOptions = useMemo(
-    () => Object.keys(REGIONS[region].districts),
-    [region],
-  )
+  const traffic = useTraffic(region)
+
+  const districtOptions = useMemo(() => Object.keys(REGIONS[region].districts), [region])
   const streetOptions = useMemo(() => {
     if (district === ALL) {
-      return Array.from(
-        new Set(Object.values(REGIONS[region].districts).flat()),
-      )
+      return Array.from(new Set(Object.values(REGIONS[region].districts).flat()))
     }
     return REGIONS[region].districts[district] ?? []
   }, [region, district])
@@ -49,6 +54,8 @@ export default function Page() {
       ),
     [region, district, street],
   )
+
+  const towers = useMemo(() => towersByRegion(region), [region])
 
   function handleRegionChange(v: RegionKey) {
     setRegion(v)
@@ -65,6 +72,9 @@ export default function Page() {
     setStreet(v)
     setSelected(null)
   }
+  function toggleLayer(key: LayerKey) {
+    setLayers((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   return (
     <main className="flex min-h-screen flex-col bg-background">
@@ -78,7 +88,7 @@ export default function Page() {
               홍보 위치 최적화 대시보드
             </h1>
             <p className="text-base font-medium text-muted-foreground md:text-lg">
-              유동인구와 버스 정류장 데이터로 최적의 홍보 위치를 찾으세요
+              유동인구·교통량·기지국 데이터로 최적의 홍보 위치를 찾으세요
             </p>
           </div>
         </div>
@@ -91,44 +101,71 @@ export default function Page() {
           street={street}
           districtOptions={districtOptions}
           streetOptions={streetOptions}
-          heatVisible={heatVisible}
           onRegionChange={handleRegionChange}
           onDistrictChange={handleDistrictChange}
           onStreetChange={handleStreetChange}
-          onHeatToggle={() => setHeatVisible((v) => !v)}
         />
+
+        {/* 교통량 연동 상태 표시 */}
+        {layers.traffic && (
+          <div
+            className={`mt-3 flex items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-base font-semibold md:text-lg ${
+              traffic.connected
+                ? "border-heat-low/40 bg-heat-low/10 text-heat-low"
+                : "border-border bg-muted text-muted-foreground"
+            }`}
+          >
+            {traffic.connected ? (
+              <Wifi className="size-5 shrink-0" aria-hidden="true" />
+            ) : (
+              <WifiOff className="size-5 shrink-0" aria-hidden="true" />
+            )}
+            <span className="text-pretty">{traffic.message}</span>
+          </div>
+        )}
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_minmax(340px,400px)]">
           {/* Map */}
-          <div className="relative h-[60vh] min-h-[420px] overflow-hidden rounded-2xl border-2 border-border shadow-sm lg:h-[68vh]">
+          <div className="relative h-[62vh] min-h-[440px] overflow-hidden rounded-2xl border-2 border-border shadow-sm lg:h-[70vh]">
             <MapView
               region={region}
               stops={stops}
-              heatVisible={heatVisible}
+              layers={layers}
+              trafficPoints={traffic.heatPoints}
+              towers={towers}
               selectedId={selected?.id ?? null}
               onSelect={setSelected}
             />
 
+            {/* 정류장 개수 배지 (좌측 상단) */}
             <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex items-center gap-2 rounded-xl border-2 border-border bg-card/95 px-3 py-2 shadow-md backdrop-blur">
               <MapPinned className="size-6 text-primary" aria-hidden="true" />
-              <span className="text-base font-bold md:text-lg">
-                정류장 {stops.length}곳
-              </span>
+              <span className="text-base font-bold md:text-lg">정류장 {stops.length}곳</span>
             </div>
 
-            <div className="absolute bottom-3 left-3 z-[1000] w-40 md:w-48">
+            {/* 범례 (좌측 하단) — 모바일에서 카드 열리면 숨김 */}
+            <div
+              className={`absolute bottom-3 left-3 z-[900] w-36 md:w-44 ${
+                selected ? "hidden lg:block" : "block"
+              }`}
+            >
               <HeatLegend />
             </div>
 
-            {/* Mobile: stat card floats over map */}
+            {/* 데이터 레이어 패널 (우측 하단) */}
+            <div className="absolute bottom-3 right-3 z-[1000]">
+              <LayerPanel layers={layers} onToggle={toggleLayer} />
+            </div>
+
+            {/* 모바일: 통계 카드가 지도 위에 뜸 */}
             {selected && (
-              <div className="absolute inset-x-3 bottom-3 z-[1000] lg:hidden">
+              <div className="absolute inset-x-3 top-16 z-[1100] lg:hidden">
                 <StopStatCard stop={selected} onClose={() => setSelected(null)} />
               </div>
             )}
           </div>
 
-          {/* Desktop side panel */}
+          {/* 데스크톱 사이드 패널 */}
           <aside className="hidden lg:block">
             {selected ? (
               <StopStatCard stop={selected} onClose={() => setSelected(null)} />
@@ -148,9 +185,7 @@ function EmptyPanel({ count }: { count: number }) {
       <div className="mb-3 flex size-16 items-center justify-center rounded-full bg-accent">
         <MapPinned className="size-8 text-primary" aria-hidden="true" />
       </div>
-      <p className="text-balance text-xl font-bold md:text-2xl">
-        정류장을 선택해 주세요
-      </p>
+      <p className="text-balance text-xl font-bold md:text-2xl">정류장을 선택해 주세요</p>
       <p className="mt-2 text-pretty text-base font-medium leading-relaxed text-muted-foreground md:text-lg">
         지도 위의 정류장 마커를 누르면 일일 승하차 인원과 시간대별 이용 통계를 볼 수 있어요.
       </p>
